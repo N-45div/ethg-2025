@@ -45,7 +45,7 @@ export default function FundTreasuryDialog({
     if (!tokenOk || !vaultOk) return false;
     const n = Number.parseFloat(amount);
     return Number.isFinite(n) && n > 0;
-  }, [amount, isPending, asset]);
+  }, [amount, isPending, asset, submitting]);
 
   const handleClose = () => onOpenChange(false);
 
@@ -110,7 +110,7 @@ export default function FundTreasuryDialog({
         <div className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="fund-asset">Asset</Label>
-            <Select value={asset} onValueChange={(v) => setAsset(v as any)}>
+            <Select value={asset} onValueChange={(v) => setAsset(v as "PYUSD" | "USDC")}>
               <SelectTrigger id="fund-asset" className="w-full">
                 <SelectValue placeholder="Select asset" />
               </SelectTrigger>

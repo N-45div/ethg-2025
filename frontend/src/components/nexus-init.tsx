@@ -17,7 +17,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
-import { Label } from "./ui/label";
 
 const flag = {
   get: (k: string, def = false) => {

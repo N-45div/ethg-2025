@@ -177,9 +177,10 @@ const useInitNexus = (sdk: NexusSDK) => {
             console.log(
               `✅ Successfully switched to ${chainConfig.chainName}`,
             );
-          } catch (switchError: any) {
+          } catch (switchError: unknown) {
             // Chain not added to wallet, add it
-            if (switchError.code === 4902) {
+            const err = switchError as { code?: number };
+            if (err.code === 4902) {
               await provider.request({
                 method: "wallet_addEthereumChain",
                 params: [

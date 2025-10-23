@@ -182,13 +182,14 @@ export function CreatePayrollIntentDialog({
 
       // Ensure worker is registered on the selected payroll
       try {
-        const prefs = await publicClient.readContract({
+        type WorkerPrefs = readonly [`0x${string}`, string, `0x${string}`];
+        const prefs = (await publicClient.readContract({
           address: targetPayroll as `0x${string}`,
           abi: payrollIntentManagerAbi,
           functionName: 'workerPrefs',
           args: [normalizedWorker],
-        });
-        const registeredWallet = (prefs as any)?.[0] as `0x${string}` | undefined;
+        })) as WorkerPrefs;
+        const [registeredWallet] = prefs;
         if (!registeredWallet || registeredWallet === '0x0000000000000000000000000000000000000000') {
           throw new Error('Worker not registered on the selected payroll. Open "Create worker profile" and save the worker first.');
         }

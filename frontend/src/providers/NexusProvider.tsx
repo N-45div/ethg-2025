@@ -113,10 +113,11 @@ const NexusProvider = ({ children }: { children: React.ReactNode }) => {
   }, [currentIntent, refreshIntent]);
 
   const approveMinAllowances = useCallback(async () => {
-    const ref = allowanceRefCallback.current as unknown as { allow?: (a: any) => Promise<void> } | null;
+    type AllowanceChoice = 'min' | 'max' | string | bigint;
+    const ref = allowanceRefCallback.current as unknown as { allow?: (a: AllowanceChoice[]) => Promise<void> } | null;
     if (!ref || !ref.allow) return;
     const count = currentAllowance?.sources?.length ?? 0;
-    const allowances = Array.from({ length: count }, () => "min");
+    const allowances: AllowanceChoice[] = Array.from({ length: count }, () => 'min');
     await ref.allow(allowances);
   }, [allowanceRefCallback, currentAllowance]);
 

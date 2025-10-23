@@ -68,7 +68,7 @@ export default function Home() {
                   Pay your global team on any chain with automated multi-chain bridging.
                 </h1>
                 <p className="text-balance text-lg text-muted-foreground">
-                  Schedule USDC and PYUSD payroll intents, execute on-chain, and automatically bridge to workers' preferred chains. No manual transfers, no complexity.
+                  Schedule USDC and PYUSD payroll intents, execute on-chain, and automatically bridge to workers&apos; preferred chains. No manual transfers, no complexity.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">

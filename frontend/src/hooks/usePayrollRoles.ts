@@ -121,7 +121,7 @@ export const usePayrollRoles = (payrollAddressOverride?: `0x${string}`): UsePayr
         setGranting(null);
       }
     },
-    [address, refreshRoles],
+    [address, refreshRoles, contractAddress],
   );
 
   useEffect(() => {
