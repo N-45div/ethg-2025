@@ -41,6 +41,7 @@ import { payrollIntentManagerAbi } from "@/lib/abi/payroll";
 import { useNexus } from "@/providers/NexusProvider";
 import { getChainIdByKey } from "@/lib/chains";
 // Nexus events temporarily not used; relying on bridgeAndExecute result for tx hash
+import type { SUPPORTED_TOKENS, SUPPORTED_CHAINS_IDS } from "@avail-project/nexus-core";
 
 const NexusActivityFeed = dynamic(
   () => import("@/components/blocks/nexus-activity"),
@@ -379,7 +380,7 @@ export default function DashboardPage() {
           <CardContent>
             {schedules.length === 0 ? (
               <div className="rounded-xl border border-border/60 bg-muted/20 p-6 text-sm text-muted-foreground">
-                No live intents found. Create one from "New payroll intent" and ensure the Treasury is funded.
+                No live intents found. Create one from &quot;New payroll intent&quot; and ensure the Treasury is funded.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -567,15 +568,15 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
                 destinationChain = prefs[1] as string;
               }
             } catch (e) {
-              console.warn("Could not read worker prefs");
+              console.warn("Could not read worker prefs", e);
             }
           }
           
-          const toChainId = getChainIdByKey(destinationChain);
+          const toChainId = getChainIdByKey(destinationChain) as SUPPORTED_CHAINS_IDS;
           
           // Bridge and execute: Company wallet → Worker on Base
           const result = await nexusSDK.bridgeAndExecute({
-            token: "USDC" as any,
+            token: "USDC" as SUPPORTED_TOKENS,
             amount: String(amount),
             toChainId,
             recipient: worker as `0x${string}`,
@@ -595,14 +596,19 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
                 },
               ],
               functionName: "transfer",
-              buildFunctionParams: (_token: any, amt: string, _chainId: number, _userAddress: `0x${string}`) => {
-                return {
-                  functionParams: [worker as `0x${string}`, BigInt(amt)],
-                };
+              buildFunctionParams: (
+                token: SUPPORTED_TOKENS,
+                amt: string,
+                chainId: SUPPORTED_CHAINS_IDS,
+                userAddress: `0x${string}`,
+              ) => {
+                void token; void chainId; void userAddress;
+                const value = parseUnits(amt, 6);
+                return { functionParams: [worker as `0x${string}`, value] };
               },
             },
             waitForReceipt: true,
-          } as any);
+          });
           
           if (result.success) {
             toast({
@@ -685,18 +691,18 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
             destinationChain = prefs[1] as string;
           }
         } catch (e) {
-          console.warn("Could not read worker prefs, using default destination");
+          console.warn("Could not read worker prefs, using default destination", e);
         }
       }
 
       // Convert destination chain key to chain ID
-      const toChainId = getChainIdByKey(destinationChain);
+      const toChainId = getChainIdByKey(destinationChain) as SUPPORTED_CHAINS_IDS;
 
       // Company wallet bridges USDC from Sepolia to Base Sepolia for the worker
       // The worker receives the funds on the destination chain
 
       const result = await nexusSDK.bridgeAndExecute({
-        token: "USDC" as any,
+        token: "USDC" as SUPPORTED_TOKENS,
         amount: String(amount), // amount in human-readable format (e.g., "100" for 100 USDC)
         toChainId,
         recipient: worker as `0x${string}`, // Worker receives funds on destination chain
@@ -717,23 +723,25 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
           ],
           functionName: "transfer",
           buildFunctionParams: (
-            _token: any,
+            token: SUPPORTED_TOKENS,
             amt: string,
-            _chainId: number,
-            _userAddress: `0x${string}`
+            chainId: SUPPORTED_CHAINS_IDS,
+            userAddress: `0x${string}`
           ) => {
+            void token; void chainId; void userAddress;
             // Send to worker address, not the connected admin wallet
             const value = parseUnits(amt, 6);
             return { functionParams: [worker as `0x${string}`, value] };
           },
         },
         waitForReceipt: true,
-      } as any);
+      });
 
       if (result.success) {
         try {
-          const txHash = (result as any).transactionHash as string | undefined;
-          const url = (result as any).explorerUrl as string | undefined;
+          const txLike = result as Partial<{ transactionHash: string; explorerUrl: string }>;
+          const txHash = txLike.transactionHash;
+          const url = txLike.explorerUrl;
           if (txHash) onBridgeTx?.(scheduleId, { hash: txHash, url });
         } catch {}
         toast({
