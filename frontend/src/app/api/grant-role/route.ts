@@ -4,7 +4,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 
 import { CONTRACTS } from '@/lib/contracts';
 import { payrollIntentManagerAbi } from '@/lib/abi/payroll';
-import { DEFAULT_ADMIN_ROLE, SUPPORTED_PAYROLL_ROLES, resolvePayrollRoleHash } from '@/lib/payrollRoles';
+import { SUPPORTED_PAYROLL_ROLES, resolvePayrollRoleHash } from '@/lib/payrollRoles';
 
 const ADMIN_PRIVATE_KEY = process.env.PAYROLL_ADMIN_KEY;
 const RPC_URL = process.env.RPC_URL ?? process.env.NEXT_PUBLIC_SEPOLIA_RPC;

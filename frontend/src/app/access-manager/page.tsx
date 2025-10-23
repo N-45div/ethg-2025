@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useAccessTicket } from "@/hooks/useAccessTicket";
 
-const DEFAULT_ROLE: "DEFAULT_ADMIN_ROLE" = "DEFAULT_ADMIN_ROLE";
+const DEFAULT_ROLE = "DEFAULT_ADMIN_ROLE" as const;
 
 const statusMeta = {
   granted: {

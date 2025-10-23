@@ -79,7 +79,6 @@ const formatPyusd = (value: number | bigint) => {
 export default function DashboardPage() {
   const { nexusSDK } = useNexus();
   const { address, isConnected } = useAccount();
-  const publicClient = usePublicClient();
   const { openTxToast } = useNotification();
   const { openPopup } = useTransactionPopup();
   const queryClient = useQueryClient();
@@ -134,7 +133,7 @@ export default function DashboardPage() {
       },
     });
 
-  const schedules: Schedule[] = (liveSchedules ?? []) as Schedule[];
+  const schedules = useMemo<Schedule[]>(() => (liveSchedules ?? []) as Schedule[], [liveSchedules]);
   const upcomingByAsset = useMemo<Schedule[]>(
     () =>
       schedules.filter((s) => !s.claimed && (assetCard === 'ALL' || s.asset === assetCard)),
@@ -155,7 +154,6 @@ export default function DashboardPage() {
     [upcomingByAsset],
   );
 
-  const usingLiveData = liveSchedules.length > 0;
   const sepoliaChainId = "11155111"; // pin to Sepolia for explorer popups
   const baseSepoliaChainId = "84532";
 

@@ -72,12 +72,12 @@ export async function GET() {
       async function getLogsChunkedForAddress(address: `0x${string}`, event: typeof intentScheduledEvent | typeof intentExecutedEvent) {
         const step = BigInt(5_000);
         let cursor = fromBlock;
-        const results: any[] = [];
+        const results: Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }> = [];
         while (cursor <= latest) {
           const to = cursor + step > latest ? latest : cursor + step;
           try {
             const part = await withAnyClient((client) => client.getLogs({ address, event, fromBlock: cursor, toBlock: to }));
-            results.push(...part);
+            results.push(...(part as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
           } catch {
             // fallback to smaller chunks with per-chunk RPC rotation as well
             let inner = cursor;
@@ -86,7 +86,7 @@ export async function GET() {
               const innerEnd = inner + innerStep;
               const innerTo = innerEnd > to ? to : innerEnd;
               const partSmall = await withAnyClient((client) => client.getLogs({ address, event, fromBlock: inner, toBlock: innerTo }));
-              results.push(...partSmall);
+              results.push(...(partSmall as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
               inner = innerTo + BigInt(1);
             }
           }
@@ -107,7 +107,6 @@ export async function GET() {
       for (const { addr, executed } of perAddress) {
         for (const log of executed) {
           const key = `${addr.toLowerCase()}-${(log.args.intentId as string)}`;
-          // @ts-ignore
           executedMap.set(key, (log.transactionHash ?? ''));
         }
       }
