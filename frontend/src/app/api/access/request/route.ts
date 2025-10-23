@@ -4,6 +4,7 @@ import { isAddress } from "viem";
 import { SUPPORTED_PAYROLL_ROLES, type PayrollRoleKey } from "@/lib/payrollRoles";
 import { ensurePayrollRole } from "@/lib/payrollAccess";
 import { writeTicket } from "@/lib/accessTickets";
+import type { AccessTicket, AccessTicketStatus } from "@/lib/accessTickets";
 
 export async function POST(request: Request) {
   let payload: unknown;
@@ -27,10 +28,10 @@ export async function POST(request: Request) {
   const wallet = account.toLowerCase() as `0x${string}`;
 
   const now = Date.now();
-  let ticket = {
+  let ticket: AccessTicket = {
     wallet,
     role: normalizedRole,
-    status: "processing",
+    status: "processing" as AccessTicketStatus,
     requestedAt: now,
     updatedAt: now,
     txHash: null,
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     const result = await ensurePayrollRole(wallet, normalizedRole);
     ticket = {
       ...ticket,
-      status: "granted",
+      status: "granted" as AccessTicketStatus,
       updatedAt: Date.now(),
       txHash: result.txHash,
       ensureStatus: result.status,
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Unable to grant role.";
     ticket = {
       ...ticket,
-      status: "failed",
+      status: "failed" as AccessTicketStatus,
       updatedAt: Date.now(),
       error: message,
       ensureStatus: null,
