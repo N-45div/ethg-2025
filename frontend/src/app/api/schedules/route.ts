@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createPublicClient, http, parseAbiItem, formatUnits } from 'viem';
+import { createPublicClient, http, parseAbiItem, formatUnits, decodeEventLog, keccak256, stringToHex } from 'viem';
+import { getRedis } from '@/lib/redis';
 
 import { CONTRACTS } from '@/lib/contracts';
 
@@ -12,16 +13,22 @@ const intentExecutedEvent = parseAbiItem(
 
 export async function GET() {
   try {
+    const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_API_BASE ?? 'https://eth-sepolia.blockscout.com/api';
+    const topic0IntentScheduled = keccak256(stringToHex('IntentScheduled(bytes32,address,uint256,uint64,bytes32)'));
+    const topic0IntentExecuted  = keccak256(stringToHex('IntentExecuted(bytes32,address,address,uint256)'));
     const rpcCandidates = [
-      // Prefer user-provided RPC first (usually with API key), then fall back to public
-      'https://1rpc.io/sepolia'
+      // Prefer reliable public endpoints first, then user-provided env
+      'https://rpc.sepolia.org',
+      'https://ethereum-sepolia.blockpi.network/v1/rpc/public',
+      'https://endpoints.omniatech.io/v1/eth/sepolia/public',
+      process.env.NEXT_PUBLIC_SEPOLIA_RPC,
     ].filter(Boolean) as string[];
 
     async function withAnyClient<T>(fn: (c: ReturnType<typeof createPublicClient>) => Promise<T>): Promise<T> {
       let lastErr: unknown;
       for (const url of rpcCandidates) {
         try {
-          const c = createPublicClient({ transport: http(url) });
+          const c = createPublicClient({ transport: http(url, { timeout: 6000 }) });
           // quick probe
           await c.getChainId();
           return await fn(c);
@@ -31,6 +38,21 @@ export async function GET() {
         }
       }
       throw lastErr ?? new Error('No RPC available');
+    }
+
+    async function getHealthyClient(): Promise<ReturnType<typeof createPublicClient>> {
+      const attempts = rpcCandidates.map((url) => (async () => {
+        const c = createPublicClient({ transport: http(url, { timeout: 5000 }) });
+        await c.getChainId();
+        return c;
+      })());
+      try {
+        // First client to respond wins
+        return await Promise.any(attempts);
+      } catch {
+        // Fallback to sequential probing
+        return await withAnyClient(async (c) => c);
+      }
     }
 
     const extraPyusd = (process.env.PAYROLL_ADDRESSES_EXTRA || '')
@@ -56,15 +78,60 @@ export async function GET() {
     }
 
     const envLookback = BigInt(Number(process.env.SCHEDULES_LOOKBACK_BLOCKS || 0) || 0);
+    const defaultWindow = envLookback > BigInt(0) ? envLookback : BigInt(100_000);
+
+    // Short TTL cache to prevent hammering RPC and to survive transient outages
+    const redis = getRedis();
+    const cacheKey = `schedules:sepolia:${defaultWindow}:${addresses.join(',')}`;
+    const cached = await redis.get<string>(cacheKey).catch(() => null);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as { schedules: Array<{ id: string; worker: string; amount: number; releaseAt: number; claimed: boolean; txHash?: string; asset: 'PYUSD' | 'USDC' }>; };
+        // Return cached immediately while we refresh in background (ISR-like)
+        return NextResponse.json(parsed, { headers: { 'Cache-Control': 's-maxage=10, stale-while-revalidate=60' } });
+      } catch {}
+    }
+
+    async function fetchLogsFromBlockscout(address: `0x${string}`, topic0: `0x${string}`, fromBlock: bigint, toBlock: bigint): Promise<Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>> {
+      const params = new URLSearchParams({
+        module: 'logs',
+        action: 'getLogs',
+        address,
+        fromBlock: fromBlock.toString(),
+        toBlock: toBlock.toString(),
+        topic0,
+      });
+      const url = `${BLOCKSCOUT_BASE}?${params.toString()}`;
+      const res = await fetch(url, { headers: { accept: 'application/json' }, cache: 'no-store' });
+      if (!res.ok) throw new Error(`Blockscout getLogs failed (${res.status})`);
+      const json = (await res.json()) as { status?: string; result?: Array<{ data: `0x${string}`; topics: `0x${string}`[]; transactionHash?: `0x${string}` }>; };
+      const raw = Array.isArray(json.result) ? json.result : [];
+      return raw.map((log) => {
+        try {
+          const topicsTuple = [
+            (log.topics?.[0] ?? topic0) as `0x${string}`,
+            ...(((log.topics ?? []).slice(1)) as `0x${string}`[]),
+          ] as [`0x${string}`, ...`0x${string}`[]];
+          const decoded = decodeEventLog({
+            abi: [topic0 === topic0IntentScheduled ? intentScheduledEvent : intentExecutedEvent],
+            data: log.data,
+            topics: topicsTuple,
+          });
+          // viem returns named args
+          return { args: decoded.args as unknown as Record<string, unknown>, transactionHash: log.transactionHash };
+        } catch {
+          return { args: {}, transactionHash: log.transactionHash };
+        }
+      });
+    }
 
     async function collect(windowBlocks: bigint) {
-      const { latest, fromBlock } = await withAnyClient(async (client) => {
-        const latest = await client.getBlockNumber();
-        const zero = BigInt(0);
-        const useWindow = envLookback > BigInt(0) ? envLookback : windowBlocks;
-        const fromBlock = latest > useWindow ? latest - useWindow : zero;
-        return { latest, fromBlock };
-      });
+      // Pick a healthy client to reduce cold-start latency
+      const primary = await getHealthyClient();
+      const latest = await primary.getBlockNumber();
+      const zero = BigInt(0);
+      const useWindow = envLookback > BigInt(0) ? envLookback : windowBlocks;
+      const fromBlock = latest > useWindow ? latest - useWindow : zero;
 
       async function getLogsChunkedForAddress(address: `0x${string}`, event: typeof intentScheduledEvent | typeof intentExecutedEvent) {
         const step = BigInt(5_000);
@@ -73,8 +140,14 @@ export async function GET() {
         while (cursor <= latest) {
           const to = cursor + step > latest ? latest : cursor + step;
           try {
-            const part = await withAnyClient((client) => client.getLogs({ address, event, fromBlock: cursor, toBlock: to }));
-            results.push(...(part as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
+            // Try primary first; if it fails, rotate
+            try {
+              const part = await primary.getLogs({ address, event, fromBlock: cursor, toBlock: to });
+              results.push(...(part as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
+            } catch {
+              const part = await withAnyClient((client) => client.getLogs({ address, event, fromBlock: cursor, toBlock: to }));
+              results.push(...(part as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
+            }
           } catch {
             // fallback to smaller chunks with per-chunk RPC rotation as well
             let inner = cursor;
@@ -82,8 +155,13 @@ export async function GET() {
             while (inner <= to) {
               const innerEnd = inner + innerStep;
               const innerTo = innerEnd > to ? to : innerEnd;
-              const partSmall = await withAnyClient((client) => client.getLogs({ address, event, fromBlock: inner, toBlock: innerTo }));
-              results.push(...(partSmall as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
+              try {
+                const partSmallPrimary = await primary.getLogs({ address, event, fromBlock: inner, toBlock: innerTo });
+                results.push(...(partSmallPrimary as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
+              } catch {
+                const partSmall = await withAnyClient((client) => client.getLogs({ address, event, fromBlock: inner, toBlock: innerTo }));
+                results.push(...(partSmall as Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>));
+              }
               inner = innerTo + BigInt(1);
             }
           }
@@ -93,10 +171,20 @@ export async function GET() {
       }
 
       const perAddress = await Promise.all(addresses.map(async (addr) => {
-        const [scheduled, executed] = await Promise.all([
-          getLogsChunkedForAddress(addr, intentScheduledEvent),
-          getLogsChunkedForAddress(addr, intentExecutedEvent),
-        ]);
+        // Try Blockscout first (single call per event); fall back to RPC chunking if it fails
+        let scheduled: Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>; 
+        let executed: Array<{ args: Record<string, unknown>; transactionHash?: `0x${string}` }>; 
+        try {
+          [scheduled, executed] = await Promise.all([
+            fetchLogsFromBlockscout(addr, topic0IntentScheduled, fromBlock, latest),
+            fetchLogsFromBlockscout(addr, topic0IntentExecuted, fromBlock, latest),
+          ]);
+        } catch {
+          [scheduled, executed] = await Promise.all([
+            getLogsChunkedForAddress(addr, intentScheduledEvent),
+            getLogsChunkedForAddress(addr, intentExecutedEvent),
+          ]);
+        }
         return { addr, scheduled, executed };
       }));
 
@@ -134,15 +222,26 @@ export async function GET() {
     }
 
     // Clamp lookback to avoid function timeouts. Prefer env override if set.
-    const defaultWindow = envLookback > BigInt(0) ? envLookback : BigInt(100_000);
     const rows = await collect(defaultWindow);
 
+    // Store fresh cache with short TTL and also update a stable fallback key
+    await redis.set(cacheKey, JSON.stringify({ schedules: rows }), { ex: 30 }).catch(() => {});
+    await redis.set('schedules:sepolia:last', JSON.stringify({ schedules: rows }), { ex: 300 }).catch(() => {});
     return NextResponse.json(
       { schedules: rows },
-      { headers: { 'Cache-Control': 's-maxage=15, stale-while-revalidate=60' } },
+      { headers: { 'Cache-Control': 's-maxage=10, stale-while-revalidate=60' } },
     );
   } catch (e) {
     console.error('GET /api/schedules failed', e);
+    // On failure, try to serve last cached data if available
+    try {
+      const redis = getRedis();
+      const cached = await redis.get<string>('schedules:sepolia:last');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return NextResponse.json(parsed, { status: 200, headers: { 'Cache-Control': 's-maxage=0, stale-while-revalidate=60' } });
+      }
+    } catch {}
     return NextResponse.json(
       { schedules: [], error: 'stale' },
       { status: 200, headers: { 'Cache-Control': 's-maxage=0, stale-while-revalidate=60' } },
