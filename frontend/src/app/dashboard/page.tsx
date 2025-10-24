@@ -126,7 +126,7 @@ export default function DashboardPage() {
       refetchOnWindowFocus: false,
       placeholderData: (prev) => (prev ? prev : ([] as Schedule[])),
       queryFn: async () => {
-        const q = address ? `?creator=${address}` : "";
+        const q = address ? `?creator=${address}&fresh=1` : "?fresh=1";
         const res = await fetch(`/api/schedules${q}`);
         if (!res.ok) return [] as Schedule[];
         const json = await res.json();
@@ -532,12 +532,13 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
   const zeroAddress = "0x0000000000000000000000000000000000000000" as const;
   const queryClient = useQueryClient();
   const { payroll: companyPayroll } = useCompanyContracts();
-  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(companyPayroll as `0x${string}` | undefined);
+  const payrollForAsset = asset === 'USDC' ? (CONTRACTS.payrollUsdc ?? companyPayroll) : (CONTRACTS.payroll ?? companyPayroll);
+  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(payrollForAsset as `0x${string}` | undefined);
   const allowed = Boolean(isAdmin || isAutomation);
 
   const handleExecute = async () => {
     try {
-      const payrollAddr = companyPayroll;
+      const payrollAddr = payrollForAsset;
       if (!payrollAddr) throw new Error("Payroll contract address not set.");
       
       // For USDC: send to company wallet so we can bridge it
@@ -566,10 +567,10 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
         try {
           // Read worker prefs for destination
           let destinationChain = "base-sepolia";
-          if (publicClient && CONTRACTS.payrollUsdc) {
+          if (publicClient && payrollForAsset) {
             try {
               const prefs = await publicClient.readContract({
-                address: CONTRACTS.payrollUsdc,
+                address: payrollForAsset,
                 abi: payrollIntentManagerAbi,
                 functionName: "workerPrefs",
                 args: [worker as `0x${string}`],
@@ -645,7 +646,7 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
         });
       }
       
-      queryClient.invalidateQueries({ queryKey: ["payroll-intents", publicClient?.chain?.id, CONTRACTS.payroll, CONTRACTS.payrollUsdc] });
+      queryClient.invalidateQueries({ queryKey: ["payroll-intents", "sepolia", address ?? "no-address"] });
     } catch (error) {
       console.error("Execute intent failed", error);
       toast({
@@ -679,6 +680,7 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
   const { payroll: companyPayroll } = useCompanyContracts();
   const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(companyPayroll as `0x${string}` | undefined);
   const allowed = Boolean(isAdmin || isAutomation);
+  const queryClient = useQueryClient();
 
   const handleBridge = async () => {
     try {
@@ -768,6 +770,7 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
           title: "Bridge initiated",
           description: `Bridging ${amount} USDC to ${destinationChain} for worker ${worker.slice(0, 6)}…${worker.slice(-4)}`,
         });
+        queryClient.invalidateQueries({ queryKey: ["payroll-intents", "sepolia", address ?? "no-address"] });
       } else {
         throw new Error(result.error || "Bridge failed");
       }

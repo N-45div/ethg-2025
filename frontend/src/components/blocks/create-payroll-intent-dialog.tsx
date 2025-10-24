@@ -31,6 +31,7 @@ import { CONTRACTS } from '@/lib/contracts';
 import { payrollIntentManagerAbi } from '@/lib/abi/payroll';
 import { treasuryAbi } from '@/lib/abi/treasury';
 import { usePayrollRoles } from '@/hooks/usePayrollRoles';
+import useCompanyContracts from '@/hooks/useCompanyContracts';
 import { keccak256, encodePacked, parseUnits } from 'viem';
 import { padHex, stringToHex } from 'viem/utils';
 
@@ -92,9 +93,10 @@ export function CreatePayrollIntentDialog({
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync, isPending } = useWriteContract();
-  const selectedPayroll = useMemo(() => (form.token === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll), [form.token]);
-  const selectedTreasury = useMemo(() => (form.token === 'USDC' ? CONTRACTS.treasuryUsdc : CONTRACTS.treasury), [form.token]);
-  const { isAutomation, isLoading: rolesLoading, granting, requestGrant } = usePayrollRoles(selectedPayroll as `0x${string}` | undefined);
+  const company = useCompanyContracts();
+  const selectedPayroll = useMemo(() => company.payroll ?? (form.token === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll), [company.payroll, form.token]);
+  const selectedTreasury = useMemo(() => company.treasury ?? (form.token === 'USDC' ? CONTRACTS.treasuryUsdc : CONTRACTS.treasury), [company.treasury, form.token]);
+  const { isAutomation, isLoading: rolesLoading, granting, requestGrant, refreshRoles } = usePayrollRoles(selectedPayroll as `0x${string}` | undefined);
   const [grantingVault, setGrantingVault] = useState(false);
 
   const chainOptions = useMemo(() => {
@@ -258,11 +260,19 @@ export function CreatePayrollIntentDialog({
 
   const handleGrantAutomation = async () => {
     try {
-      const { txHash } = await requestGrant('AUTOMATION_ROLE');
-      toast({
-        title: 'Role grant submitted',
-        description: `Grant tx ${txHash.slice(0, 6)}…${txHash.slice(-4)} is pending confirmation.`,
-      });
+      const { txHash, status } = await requestGrant('AUTOMATION_ROLE');
+      if (status === 'already_granted' || !txHash) {
+        toast({
+          title: 'Automation role already granted',
+          description: 'This wallet already holds AUTOMATION_ROLE on the payroll.',
+        });
+      } else {
+        toast({
+          title: 'Role grant submitted',
+          description: `Grant tx ${txHash.slice(0, 6)}…${txHash.slice(-4)} is pending confirmation.`,
+        });
+      }
+      await refreshRoles();
     } catch (error) {
       console.error('Failed to grant automation role', error);
       toast({

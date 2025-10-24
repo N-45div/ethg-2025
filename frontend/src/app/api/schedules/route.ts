@@ -83,11 +83,13 @@ export async function GET(request: Request) {
     // Optional filter: only include intents created by this wallet (tx.from)
     const url = new URL(request.url);
     const creator = (url.searchParams.get('creator') || '').toLowerCase();
+    const fresh = (url.searchParams.get('fresh') || '').toLowerCase();
+    const forceFresh = fresh === '1' || fresh === 'true';
 
     // Short TTL cache to prevent hammering RPC and to survive transient outages
     const redis = getRedis();
     const cacheKey = `schedules:sepolia:${defaultWindow}:${addresses.join(',')}:creator:${creator || 'all'}`;
-    const cached = await redis.get<string>(cacheKey).catch(() => null);
+    const cached = forceFresh ? null : await redis.get<string>(cacheKey).catch(() => null);
     if (cached) {
       try {
         const parsed = JSON.parse(cached) as { schedules: Array<{ id: string; worker: string; amount: number; releaseAt: number; claimed: boolean; txHash?: string; asset: 'PYUSD' | 'USDC' }>; };
