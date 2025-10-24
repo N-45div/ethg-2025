@@ -13,11 +13,11 @@ const intentExecutedEvent = parseAbiItem(
 export async function GET() {
   try {
     const rpcCandidates = [
-      // Prefer public endpoints first to avoid private provider rate limits
+      // Prefer user-provided RPC first (usually with API key), then fall back to public
+      process.env.NEXT_PUBLIC_SEPOLIA_RPC,
       'https://rpc.sepolia.org',
       'https://ethereum-sepolia.blockpi.network/v1/rpc/public',
       'https://endpoints.omniatech.io/v1/eth/sepolia/public',
-      process.env.NEXT_PUBLIC_SEPOLIA_RPC,
     ].filter(Boolean) as string[];
 
     async function withAnyClient<T>(fn: (c: ReturnType<typeof createPublicClient>) => Promise<T>): Promise<T> {
@@ -136,14 +136,9 @@ export async function GET() {
       return rows;
     }
 
-    let rows = await collect(BigInt(20_000));
-    if (rows.length === 0) {
-      // Fallback deeper scan to recover older schedules
-      rows = await collect(BigInt(1_000_000));
-      if (rows.length === 0) {
-        rows = await collect(BigInt(2_500_000));
-      }
-    }
+    // Clamp lookback to avoid function timeouts. Prefer env override if set.
+    const defaultWindow = envLookback > BigInt(0) ? envLookback : BigInt(100_000);
+    const rows = await collect(defaultWindow);
 
     return NextResponse.json(
       { schedules: rows },

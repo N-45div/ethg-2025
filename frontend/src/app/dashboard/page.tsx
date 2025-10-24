@@ -506,6 +506,11 @@ export default function DashboardPage() {
         <CreatePayrollIntentDialog
           open={intentDialogOpen}
           onOpenChange={setIntentDialogOpen}
+          onSuccess={() =>
+            queryClient.invalidateQueries({
+              queryKey: ["payroll-intents", "sepolia", CONTRACTS.payroll, CONTRACTS.payrollUsdc],
+            })
+          }
         />
         <FundTreasuryDialog open={fundDialogOpen} onOpenChange={setFundDialogOpen} />
       </section>
