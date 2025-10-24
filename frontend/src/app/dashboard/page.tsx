@@ -40,6 +40,7 @@ import { erc20Abi } from "@/lib/abi/erc20";
 import { payrollIntentManagerAbi } from "@/lib/abi/payroll";
 import { useNexus } from "@/providers/NexusProvider";
 import { usePayrollRoles } from "@/hooks/usePayrollRoles";
+import useCompanyContracts from "../../hooks/useCompanyContracts";
 import { getChainIdByKey } from "@/lib/chains";
 // Nexus events temporarily not used; relying on bridgeAndExecute result for tx hash
 import type { SUPPORTED_TOKENS, SUPPORTED_CHAINS_IDS } from "@avail-project/nexus-core";
@@ -83,6 +84,7 @@ export default function DashboardPage() {
   const { openTxToast } = useNotification();
   const { openPopup } = useTransactionPopup();
   const queryClient = useQueryClient();
+  const company = useCompanyContracts();
   const [workerDialogOpen, setWorkerDialogOpen] = useState(false);
   const [intentDialogOpen, setIntentDialogOpen] = useState(false);
   const [fundDialogOpen, setFundDialogOpen] = useState(false);
@@ -98,9 +100,9 @@ export default function DashboardPage() {
     address: CONTRACTS.pyusd,
     abi: erc20Abi,
     functionName: "balanceOf",
-    args: CONTRACTS.treasury ? [CONTRACTS.treasury] : undefined,
+    args: company.treasury ? [company.treasury] : undefined,
     query: {
-      enabled: Boolean(CONTRACTS.pyusd && CONTRACTS.treasury),
+      enabled: Boolean(CONTRACTS.pyusd && company.treasury),
     },
   });
 
@@ -108,9 +110,9 @@ export default function DashboardPage() {
     address: CONTRACTS.usdcSepolia,
     abi: erc20Abi,
     functionName: "balanceOf",
-    args: CONTRACTS.treasuryUsdc ? [CONTRACTS.treasuryUsdc] : undefined,
+    args: company.treasury ? [company.treasury] : undefined,
     query: {
-      enabled: Boolean(CONTRACTS.usdcSepolia && CONTRACTS.treasuryUsdc),
+      enabled: Boolean(CONTRACTS.usdcSepolia && company.treasury),
     },
   });
 
@@ -529,13 +531,13 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
   const [bridging, setBridging] = useState(false);
   const zeroAddress = "0x0000000000000000000000000000000000000000" as const;
   const queryClient = useQueryClient();
-  const payrollAddrForRoles = asset === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll;
-  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(payrollAddrForRoles as `0x${string}` | undefined);
+  const { payroll: companyPayroll } = useCompanyContracts();
+  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(companyPayroll as `0x${string}` | undefined);
   const allowed = Boolean(isAdmin || isAutomation);
 
   const handleExecute = async () => {
     try {
-      const payrollAddr = asset === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll;
+      const payrollAddr = companyPayroll;
       if (!payrollAddr) throw new Error("Payroll contract address not set.");
       
       // For USDC: send to company wallet so we can bridge it
@@ -674,8 +676,8 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
   const publicClient = usePublicClient();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const payrollForRoles = (CONTRACTS.payrollUsdc ?? CONTRACTS.payroll) as `0x${string}` | undefined;
-  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(payrollForRoles);
+  const { payroll: companyPayroll } = useCompanyContracts();
+  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(companyPayroll as `0x${string}` | undefined);
   const allowed = Boolean(isAdmin || isAutomation);
 
   const handleBridge = async () => {
@@ -697,10 +699,10 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
 
       // Read worker preferences to get destination chain
       let destinationChain = "base-sepolia"; // default
-      if (publicClient && CONTRACTS.payrollUsdc) {
+      if (publicClient && companyPayroll) {
         try {
           const prefs = await publicClient.readContract({
-            address: CONTRACTS.payrollUsdc,
+            address: companyPayroll,
             abi: payrollIntentManagerAbi,
             functionName: "workerPrefs",
             args: [worker as `0x${string}`],
