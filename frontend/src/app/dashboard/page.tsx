@@ -89,11 +89,12 @@ export default function DashboardPage() {
   const [intentDialogOpen, setIntentDialogOpen] = useState(false);
   const [fundDialogOpen, setFundDialogOpen] = useState(false);
   const [assetCard, setAssetCard] = useState<'ALL' | 'PYUSD' | 'USDC'>('ALL');
-  const [bridges, setBridges] = useState<Record<string, { hash: string; url?: string }>>({});
+  const [bridges, setBridges] = useState<Record<string, { hash?: string; url?: string }>>({});
+  const [bridged, setBridged] = useState<Record<string, boolean>>({});
 
-  const onBridgeTx = useCallback((id: string, data: { hash: string; url?: string }) => {
-    if (!data?.hash) return;
+  const onBridgeTx = useCallback((id: string, data: { hash?: string; url?: string }) => {
     setBridges((prev) => ({ ...prev, [id]: data }));
+    setBridged((prev) => ({ ...prev, [id]: true }));
   }, []);
 
   const { data: pyusdBalance, isPending: pyusdLoading } = useReadContract({
@@ -433,25 +434,33 @@ export default function DashboardPage() {
                               >
                                 View Tx
                               </Button>
-                              {schedule.asset === 'USDC' && bridges[schedule.id] ? (
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => {
-                                    const b = bridges[schedule.id]!;
-                                    if (b.url) window.open(b.url, "_blank");
-                                    else openTxToast(baseSepoliaChainId, b.hash);
-                                  }}
-                                >
-                                  View Bridge Tx
-                                </Button>
-                              ) : schedule.asset === 'USDC' ? (
-                                <BridgeButton
-                                  scheduleId={schedule.id}
-                                  worker={schedule.worker}
-                                  amount={schedule.amount}
-                                  onBridgeTx={onBridgeTx}
-                                />
+                              {schedule.asset === 'USDC' ? (
+                                bridged[schedule.id] || bridges[schedule.id] ? (
+                                  bridges[schedule.id] && (bridges[schedule.id]!.hash || bridges[schedule.id]!.url) ? (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => {
+                                        const b = bridges[schedule.id]!;
+                                        if (b.url) window.open(b.url, "_blank");
+                                        else if (b.hash) openTxToast(baseSepoliaChainId, b.hash);
+                                      }}
+                                    >
+                                      View Bridge Tx
+                                    </Button>
+                                  ) : (
+                                    <Button variant="secondary" size="sm" disabled>
+                                      Bridged
+                                    </Button>
+                                  )
+                                ) : (
+                                  <BridgeButton
+                                    scheduleId={schedule.id}
+                                    worker={schedule.worker}
+                                    amount={schedule.amount}
+                                    onBridgeTx={onBridgeTx}
+                                  />
+                                )
                               ) : null}
                             </>
                           ) : (
@@ -677,7 +686,7 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
   );
 }
 
-function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: string; worker: string; amount: number; onBridgeTx?: (id: string, data: { hash: string; url?: string }) => void }) {
+function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: string; worker: string; amount: number; onBridgeTx?: (id: string, data: { hash?: string; url?: string }) => void }) {
   const { nexusSDK } = useNexus();
   const { address } = useAccount();
   const publicClient = usePublicClient();
@@ -767,11 +776,14 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
 
       if (result.success) {
         try {
-          const txLike = result as Partial<{ transactionHash: string; explorerUrl: string }>;
+          const txLike = result as Partial<{ transactionHash?: string; explorerUrl?: string }>;
           const txHash = txLike.transactionHash;
           const url = txLike.explorerUrl;
-          if (txHash) onBridgeTx?.(scheduleId, { hash: txHash, url });
-        } catch {}
+          // Always mark bridged; include tx data if available
+          onBridgeTx?.(scheduleId, { hash: txHash, url });
+        } catch {
+          onBridgeTx?.(scheduleId, {});
+        }
         toast({
           title: "Bridge initiated",
           description: `Bridging ${amount} USDC to ${destinationChain} for worker ${worker.slice(0, 6)}…${worker.slice(-4)}`,
