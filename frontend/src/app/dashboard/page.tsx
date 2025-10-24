@@ -100,9 +100,12 @@ export default function DashboardPage() {
     address: CONTRACTS.pyusd,
     abi: erc20Abi,
     functionName: "balanceOf",
-    args: company.treasury ? [company.treasury] : undefined,
+    args: CONTRACTS.treasury ? [CONTRACTS.treasury] : undefined,
     query: {
-      enabled: Boolean(CONTRACTS.pyusd && company.treasury),
+      enabled: Boolean(CONTRACTS.pyusd && CONTRACTS.treasury),
+      refetchInterval: 10000,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
     },
   });
 
@@ -110,9 +113,12 @@ export default function DashboardPage() {
     address: CONTRACTS.usdcSepolia,
     abi: erc20Abi,
     functionName: "balanceOf",
-    args: company.treasury ? [company.treasury] : undefined,
+    args: CONTRACTS.treasuryUsdc ? [CONTRACTS.treasuryUsdc] : undefined,
     query: {
-      enabled: Boolean(CONTRACTS.usdcSepolia && company.treasury),
+      enabled: Boolean(CONTRACTS.usdcSepolia && CONTRACTS.treasuryUsdc),
+      refetchInterval: 10000,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
     },
   });
 
