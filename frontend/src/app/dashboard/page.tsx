@@ -39,6 +39,7 @@ import { CONTRACTS } from "@/lib/contracts";
 import { erc20Abi } from "@/lib/abi/erc20";
 import { payrollIntentManagerAbi } from "@/lib/abi/payroll";
 import { useNexus } from "@/providers/NexusProvider";
+import { usePayrollRoles } from "@/hooks/usePayrollRoles";
 import { getChainIdByKey } from "@/lib/chains";
 // Nexus events temporarily not used; relying on bridgeAndExecute result for tx hash
 import type { SUPPORTED_TOKENS, SUPPORTED_CHAINS_IDS } from "@avail-project/nexus-core";
@@ -115,15 +116,16 @@ export default function DashboardPage() {
 
   const { data: liveSchedules = [] as Schedule[], isFetching: schedulesFetching } =
     useQuery<Schedule[]>({
-      queryKey: ["payroll-intents", "sepolia", CONTRACTS.payroll, CONTRACTS.payrollUsdc],
-      enabled: Boolean(CONTRACTS.payroll || CONTRACTS.payrollUsdc),
+      queryKey: ["payroll-intents", "sepolia", address ?? "no-address"],
+      enabled: Boolean(address),
       staleTime: 60_000,
       gcTime: 5 * 60_000,
       refetchInterval: 15_000,
       refetchOnWindowFocus: false,
       placeholderData: (prev) => (prev ? prev : ([] as Schedule[])),
       queryFn: async () => {
-        const res = await fetch('/api/schedules');
+        const q = address ? `?creator=${address}` : "";
+        const res = await fetch(`/api/schedules${q}`);
         if (!res.ok) return [] as Schedule[];
         const json = await res.json();
         const rows = (json?.schedules ?? []) as Array<{ id: string; worker: string; amount: number; releaseAt: number; claimed: boolean; txHash?: string; asset: 'PYUSD' | 'USDC'; }>;
@@ -366,7 +368,7 @@ export default function DashboardPage() {
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                      queryClient.invalidateQueries({ queryKey: ["payroll-intents", "sepolia", CONTRACTS.payroll, CONTRACTS.payrollUsdc] })
+                      queryClient.invalidateQueries({ queryKey: ["payroll-intents", "sepolia", address ?? "no-address"] })
                     }
                   >
                     Refresh
@@ -508,7 +510,7 @@ export default function DashboardPage() {
           onOpenChange={setIntentDialogOpen}
           onSuccess={() =>
             queryClient.invalidateQueries({
-              queryKey: ["payroll-intents", "sepolia", CONTRACTS.payroll, CONTRACTS.payrollUsdc],
+              queryKey: ["payroll-intents", "sepolia", address ?? "no-address"],
             })
           }
         />
@@ -527,6 +529,9 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
   const [bridging, setBridging] = useState(false);
   const zeroAddress = "0x0000000000000000000000000000000000000000" as const;
   const queryClient = useQueryClient();
+  const payrollAddrForRoles = asset === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll;
+  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(payrollAddrForRoles as `0x${string}` | undefined);
+  const allowed = Boolean(isAdmin || isAutomation);
 
   const handleExecute = async () => {
     try {
@@ -650,8 +655,15 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
   };
 
   return (
-    <Button type="button" variant="outline" size="sm" onClick={handleExecute} disabled={isPending || bridging}>
-      {isPending ? "Executing…" : bridging ? "Bridging…" : "Execute & Bridge"}
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleExecute}
+      disabled={isPending || bridging || rolesLoading || !allowed}
+      title={!allowed ? "Not authorized" : undefined}
+    >
+      {!allowed ? "Not authorized" : isPending ? "Executing…" : bridging ? "Bridging…" : "Execute & Bridge"}
     </Button>
   );
 }
@@ -662,6 +674,9 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
   const publicClient = usePublicClient();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const payrollForRoles = (CONTRACTS.payrollUsdc ?? CONTRACTS.payroll) as `0x${string}` | undefined;
+  const { isAdmin, isAutomation, isLoading: rolesLoading } = usePayrollRoles(payrollForRoles);
+  const allowed = Boolean(isAdmin || isAutomation);
 
   const handleBridge = async () => {
     try {
@@ -767,8 +782,15 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
   };
 
   return (
-    <Button type="button" variant="default" size="sm" onClick={handleBridge} disabled={loading}>
-      {loading ? "Bridging…" : "Bridge to Base"}
+    <Button
+      type="button"
+      variant="default"
+      size="sm"
+      onClick={handleBridge}
+      disabled={loading || rolesLoading || !allowed}
+      title={!allowed ? "Not authorized" : undefined}
+    >
+      {!allowed ? "Not authorized" : loading ? "Bridging…" : "Bridge to Base"}
     </Button>
   );
 }

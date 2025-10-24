@@ -11,7 +11,7 @@ const intentExecutedEvent = parseAbiItem(
   'event IntentExecuted(bytes32 indexed intentId, address indexed worker, address destination, uint256 amount)'
 );
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const BLOCKSCOUT_BASE = process.env.BLOCKSCOUT_API_BASE ?? 'https://eth-sepolia.blockscout.com/api';
     const topic0IntentScheduled = keccak256(stringToHex('IntentScheduled(bytes32,address,uint256,uint64,bytes32)'));
@@ -80,9 +80,13 @@ export async function GET() {
     const envLookback = BigInt(Number(process.env.SCHEDULES_LOOKBACK_BLOCKS || 0) || 0);
     const defaultWindow = envLookback > BigInt(0) ? envLookback : BigInt(100_000);
 
+    // Optional filter: only include intents created by this wallet (tx.from)
+    const url = new URL(request.url);
+    const creator = (url.searchParams.get('creator') || '').toLowerCase();
+
     // Short TTL cache to prevent hammering RPC and to survive transient outages
     const redis = getRedis();
-    const cacheKey = `schedules:sepolia:${defaultWindow}:${addresses.join(',')}`;
+    const cacheKey = `schedules:sepolia:${defaultWindow}:${addresses.join(',')}:creator:${creator || 'all'}`;
     const cached = await redis.get<string>(cacheKey).catch(() => null);
     if (cached) {
       try {
@@ -123,6 +127,30 @@ export async function GET() {
           return { args: {}, transactionHash: log.transactionHash };
         }
       });
+    }
+
+    async function getTxFrom(txHash: `0x${string}`): Promise<string | null> {
+      try {
+        // Try proxy RPC via Blockscout (no API key needed)
+        const u = `${BLOCKSCOUT_BASE}?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}`;
+        const r = await fetch(u, { headers: { accept: 'application/json' }, cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          const from = j?.result?.from as string | undefined;
+          if (typeof from === 'string' && from.startsWith('0x')) return from.toLowerCase();
+        }
+      } catch {}
+      try {
+        // Fallback to transaction module
+        const u2 = `${BLOCKSCOUT_BASE}?module=transaction&action=gettxinfo&txhash=${txHash}`;
+        const r2 = await fetch(u2, { headers: { accept: 'application/json' }, cache: 'no-store' });
+        if (r2.ok) {
+          const j2 = await r2.json();
+          const from = (j2?.result?.from || j2?.result?.from_address) as string | undefined;
+          if (typeof from === 'string' && from.startsWith('0x')) return from.toLowerCase();
+        }
+      } catch {}
+      return null;
     }
 
     async function collect(windowBlocks: bigint) {
@@ -196,6 +224,25 @@ export async function GET() {
         }
       }
 
+      // Build creator match map if filtering by creator
+      let creatorMatch: Map<string, boolean> = new Map();
+      if (creator) {
+        const scheduleTxs = new Set<string>();
+        for (const { scheduled } of perAddress) {
+          for (const log of scheduled) {
+            if (log.transactionHash) scheduleTxs.add(log.transactionHash.toLowerCase());
+          }
+        }
+        const hashes = Array.from(scheduleTxs);
+        const pairs = await Promise.all(
+          hashes.map(async (h) => {
+            const from = await getTxFrom(h as `0x${string}`);
+            return [h, from === creator] as const;
+          }),
+        );
+        creatorMatch = new Map(pairs);
+      }
+
       const rows: Array<{
         id: string; worker: string; amount: number; releaseAt: number; claimed: boolean; txHash?: string; asset: 'PYUSD' | 'USDC'
       }> = [];
@@ -203,14 +250,17 @@ export async function GET() {
         const isPyusd = addr.toLowerCase() === (CONTRACTS.payroll ?? '').toLowerCase();
         const asset: 'PYUSD' | 'USDC' = isPyusd ? 'PYUSD' : 'USDC';
         for (const log of scheduled) {
-          const amountRaw = log.args.amount as bigint;
-          const releaseAtSeconds = Number(log.args.releaseAt);
+          const sTx = (log.transactionHash ?? '').toLowerCase();
+          if (creator && (!sTx || creatorMatch.get(sTx) !== true)) {
+            continue;
+          }
           const key = `${addr.toLowerCase()}-${(log.args.intentId as string)}`;
+          const amount = Number(formatUnits(log.args.amount as bigint, 6));
           rows.push({
             id: log.args.intentId as string,
             worker: log.args.worker as string,
-            amount: Number(formatUnits(amountRaw, 6)),
-            releaseAt: releaseAtSeconds * 1000,
+            amount,
+            releaseAt: Number(log.args.releaseAt as bigint),
             claimed: executedMap.has(key),
             txHash: executedMap.get(key),
             asset,
