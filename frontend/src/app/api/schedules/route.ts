@@ -14,10 +14,7 @@ export async function GET() {
   try {
     const rpcCandidates = [
       // Prefer user-provided RPC first (usually with API key), then fall back to public
-      process.env.NEXT_PUBLIC_SEPOLIA_RPC,
-      'https://rpc.sepolia.org',
-      'https://ethereum-sepolia.blockpi.network/v1/rpc/public',
-      'https://endpoints.omniatech.io/v1/eth/sepolia/public',
+      'https://1rpc.io/sepolia'
     ].filter(Boolean) as string[];
 
     async function withAnyClient<T>(fn: (c: ReturnType<typeof createPublicClient>) => Promise<T>): Promise<T> {
