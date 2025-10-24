@@ -38,8 +38,8 @@ export const SUPPORTED_TESTNET_CHAINS = [
     name: "Sepolia",
     key: "sepolia",
     explorer: "https://sepolia.etherscan.io",
-    enabled: false, // Source chain, not a destination
-    supports: [] as const,
+    enabled: true, // Allow selecting Sepolia for cases where no bridge is desired
+    supports: ['USDC'] as const,
   },
 ] as const;
 

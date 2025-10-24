@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { format } from "date-fns";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { formatUnits, parseUnits } from "viem";
@@ -89,13 +89,32 @@ export default function DashboardPage() {
   const [intentDialogOpen, setIntentDialogOpen] = useState(false);
   const [fundDialogOpen, setFundDialogOpen] = useState(false);
   const [assetCard, setAssetCard] = useState<'ALL' | 'PYUSD' | 'USDC'>('ALL');
-  const [bridges, setBridges] = useState<Record<string, { hash?: string; url?: string }>>({});
+  const [bridges, setBridges] = useState<Record<string, { hash?: string; url?: string; dest?: string }>>({});
   const [bridged, setBridged] = useState<Record<string, boolean>>({});
 
-  const onBridgeTx = useCallback((id: string, data: { hash?: string; url?: string }) => {
+  const onBridgeTx = useCallback((id: string, data: { hash?: string; url?: string; dest?: string }) => {
     setBridges((prev) => ({ ...prev, [id]: data }));
     setBridged((prev) => ({ ...prev, [id]: true }));
   }, []);
+
+  // Hydrate bridge state from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("synced-streams:bridges:v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { bridges?: Record<string, { hash?: string; url?: string; dest?: string }>; bridged?: Record<string, boolean> };
+        if (parsed?.bridges) setBridges(parsed.bridges);
+        if (parsed?.bridged) setBridged(parsed.bridged);
+      }
+    } catch {}
+  }, []);
+
+  // Persist bridge state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("synced-streams:bridges:v1", JSON.stringify({ bridges, bridged }));
+    } catch {}
+  }, [bridges, bridged]);
 
   const { data: pyusdBalance, isPending: pyusdLoading } = useReadContract({
     address: CONTRACTS.pyusd,
@@ -437,21 +456,31 @@ export default function DashboardPage() {
                               {schedule.asset === 'USDC' ? (
                                 bridged[schedule.id] || bridges[schedule.id] ? (
                                   bridges[schedule.id] && (bridges[schedule.id]!.hash || bridges[schedule.id]!.url) ? (
-                                    <Button
-                                      variant="default"
-                                      size="sm"
-                                      onClick={() => {
-                                        const b = bridges[schedule.id]!;
-                                        if (b.url) window.open(b.url, "_blank");
-                                        else if (b.hash) openTxToast(baseSepoliaChainId, b.hash);
-                                      }}
-                                    >
-                                      View Bridge Tx
-                                    </Button>
+                                    <div className="inline-flex items-center gap-2">
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => {
+                                          const b = bridges[schedule.id]!;
+                                          if (b.url) window.open(b.url, "_blank");
+                                          else if (b.hash) openTxToast(baseSepoliaChainId, b.hash);
+                                        }}
+                                      >
+                                        View Bridge Tx
+                                      </Button>
+                                      {bridges[schedule.id]?.dest && (
+                                        <Badge variant="outline">Dest: {bridges[schedule.id]!.dest}</Badge>
+                                      )}
+                                    </div>
                                   ) : (
-                                    <Button variant="secondary" size="sm" disabled>
-                                      Bridged
-                                    </Button>
+                                    <div className="inline-flex items-center gap-2">
+                                      <Button variant="secondary" size="sm" disabled>
+                                        Bridged
+                                      </Button>
+                                      {bridges[schedule.id]?.dest && (
+                                        <Badge variant="outline">Dest: {bridges[schedule.id]!.dest}</Badge>
+                                      )}
+                                    </div>
                                   )
                                 ) : (
                                   <BridgeButton
@@ -580,7 +609,7 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
         });
         
         try {
-          // Read worker prefs for destination
+          // Read worker prefs for destination, enforce token→chain policy
           let destinationChain = "base-sepolia";
           if (publicClient && payrollForAsset) {
             try {
@@ -591,7 +620,10 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
                 args: [worker as `0x${string}`],
               });
               if (prefs && prefs[1]) {
-                destinationChain = prefs[1] as string;
+                const pref = String(prefs[1]);
+                // If PYUSD was the asset, it would not enter this branch.
+                // For USDC, disallow sepolia as destination; default to base-sepolia.
+                destinationChain = pref === "sepolia" ? "base-sepolia" : pref;
               }
             } catch (e) {
               console.warn("Could not read worker prefs", e);
@@ -686,7 +718,7 @@ function ExecuteIntentButton({ intentId, asset, worker, amount }: { intentId: st
   );
 }
 
-function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: string; worker: string; amount: number; onBridgeTx?: (id: string, data: { hash?: string; url?: string }) => void }) {
+function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: string; worker: string; amount: number; onBridgeTx?: (id: string, data: { hash?: string; url?: string; dest?: string }) => void }) {
   const { nexusSDK } = useNexus();
   const { address } = useAccount();
   const publicClient = usePublicClient();
@@ -714,8 +746,8 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
         throw new Error("USDC Base Sepolia address not configured.");
       }
 
-      // Read worker preferences to get destination chain
-      let destinationChain = "base-sepolia"; // default
+      // Read worker preferences to get destination chain; enforce token→chain policy
+      let destinationChain = "base-sepolia"; // default for USDC
       if (publicClient && companyPayroll) {
         try {
           const prefs = await publicClient.readContract({
@@ -725,7 +757,8 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
             args: [worker as `0x${string}`],
           });
           if (prefs && prefs[1]) {
-            destinationChain = prefs[1] as string;
+            const pref = String(prefs[1]);
+            destinationChain = pref === "sepolia" || pref === "" ? "base-sepolia" : pref;
           }
         } catch (e) {
           console.warn("Could not read worker prefs, using default destination", e);
@@ -780,9 +813,9 @@ function BridgeButton({ scheduleId, worker, amount, onBridgeTx }: { scheduleId: 
           const txHash = txLike.transactionHash;
           const url = txLike.explorerUrl;
           // Always mark bridged; include tx data if available
-          onBridgeTx?.(scheduleId, { hash: txHash, url });
+          onBridgeTx?.(scheduleId, { hash: txHash, url, dest: destinationChain });
         } catch {
-          onBridgeTx?.(scheduleId, {});
+          onBridgeTx?.(scheduleId, { dest: destinationChain });
         }
         toast({
           title: "Bridge initiated",

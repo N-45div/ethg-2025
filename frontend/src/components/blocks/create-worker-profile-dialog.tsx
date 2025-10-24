@@ -56,7 +56,7 @@ const DEFAULT_FORM: FormState = {
   role: 'Contributor',
   payrollNotes: '',
   allocationUsd: '',
-  destinationChain: DESTINATION_OPTIONS[0]!.value,
+  destinationChain: 'sepolia',
   templateId: '',
 };
 
@@ -301,6 +301,9 @@ export function CreateWorkerProfileDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                PYUSD settles on Sepolia. USDC will bridge to your selected destination.
+              </p>
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -21,11 +21,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { useNexus } from '@/providers/NexusProvider';
-import {
-  CHAIN_METADATA,
-  SUPPORTED_CHAINS,
-  SUPPORTED_TOKENS,
-} from '@avail-project/nexus-core';
+import { CHAIN_METADATA, SUPPORTED_CHAINS } from '@avail-project/nexus-core';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { CONTRACTS } from '@/lib/contracts';
 import { payrollIntentManagerAbi } from '@/lib/abi/payroll';
@@ -41,29 +37,18 @@ interface CreatePayrollIntentDialogProps {
   onSuccess?: () => void;
 }
 
-const TOKEN_OPTIONS: { label: string; value: SUPPORTED_TOKENS }[] = [
-  {
-    label: 'USDC (demo placeholder for PYUSD)',
-    value: 'USDC',
-  },
-  {
-    label: 'USDT',
-    value: 'USDT',
-  },
-  {
-    label: 'ETH',
-    value: 'ETH',
-  },
+type IntentToken = 'PYUSD' | 'USDC';
+const TOKEN_OPTIONS: { label: string; value: IntentToken }[] = [
+  { label: 'PYUSD', value: 'PYUSD' },
+  { label: 'USDC', value: 'USDC' },
 ];
 
-const TARGET_CHAIN_IDS: number[] = [
-  SUPPORTED_CHAINS.SEPOLIA,
-  SUPPORTED_CHAINS.BASE_SEPOLIA,
-];
+const BASE_ONLY: number[] = [SUPPORTED_CHAINS.BASE_SEPOLIA];
+const SEPOLIA_ONLY: number[] = [SUPPORTED_CHAINS.SEPOLIA];
 
 type FormState = {
   workerAddress: string;
-  token: SUPPORTED_TOKENS;
+  token: IntentToken;
   destinationChainId: number;
   amount: string;
   memo: string;
@@ -73,8 +58,8 @@ type FormState = {
 
 const DEFAULT_FORM: FormState = {
   workerAddress: '',
-  token: TOKEN_OPTIONS[0]!.value,
-  destinationChainId: TARGET_CHAIN_IDS[0]!,
+  token: 'PYUSD',
+  destinationChainId: SUPPORTED_CHAINS.SEPOLIA,
   amount: '',
   memo: '',
   releaseAt: '',
@@ -94,14 +79,31 @@ export function CreatePayrollIntentDialog({
   const publicClient = usePublicClient();
   const { writeContractAsync, isPending } = useWriteContract();
   const company = useCompanyContracts();
-  const selectedPayroll = useMemo(() => company.payroll ?? (form.token === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll), [company.payroll, form.token]);
-  const selectedTreasury = useMemo(() => company.treasury ?? (form.token === 'USDC' ? CONTRACTS.treasuryUsdc : CONTRACTS.treasury), [company.treasury, form.token]);
+  const selectedPayroll = useMemo(
+    () => (form.token === 'USDC' ? (company.payroll ?? CONTRACTS.payrollUsdc) : (company.payroll ?? CONTRACTS.payroll)),
+    [company.payroll, form.token]
+  );
+  const selectedTreasury = useMemo(
+    () => (form.token === 'USDC' ? (company.treasury ?? CONTRACTS.treasuryUsdc) : (company.treasury ?? CONTRACTS.treasury)),
+    [company.treasury, form.token]
+  );
   const { isAutomation, isLoading: rolesLoading, granting, requestGrant, refreshRoles } = usePayrollRoles(selectedPayroll as `0x${string}` | undefined);
   const [grantingVault, setGrantingVault] = useState(false);
 
   const chainOptions = useMemo(() => {
-    return TARGET_CHAIN_IDS.map((id) => CHAIN_METADATA[id]).filter(Boolean);
-  }, []);
+    const ids = form.token === 'PYUSD' ? SEPOLIA_ONLY : BASE_ONLY;
+    return ids.map((id) => CHAIN_METADATA[id]).filter(Boolean);
+  }, [form.token]);
+
+  // Ensure destination matches token semantics
+  useEffect(() => {
+    if (form.token === 'PYUSD' && form.destinationChainId !== SUPPORTED_CHAINS.SEPOLIA) {
+      setForm((prev) => ({ ...prev, destinationChainId: SUPPORTED_CHAINS.SEPOLIA }));
+    }
+    if (form.token === 'USDC' && form.destinationChainId === SUPPORTED_CHAINS.SEPOLIA) {
+      setForm((prev) => ({ ...prev, destinationChainId: SUPPORTED_CHAINS.BASE_SEPOLIA }));
+    }
+  }, [form.token]);
 
   const resetForm = () => {
     setForm(() => ({ ...DEFAULT_FORM }));
@@ -172,8 +174,7 @@ export function CreatePayrollIntentDialog({
       const scheduleId = scheduleIdInput.startsWith('0x')
         ? padHex(scheduleIdInput as `0x${string}`, { size: 32 })
         : padHex(stringToHex(scheduleIdInput, { size: 32 }), { size: 32 });
-      const decimals = form.token === 'ETH' ? 18 : 6;
-      const amount = parseUnits(form.amount, decimals);
+      const amount = parseUnits(form.amount, 6);
 
       const intentHash = keccak256(
         encodePacked(
@@ -347,9 +348,7 @@ export function CreatePayrollIntentDialog({
               <Label htmlFor="intent-token">Token</Label>
               <Select
                 value={form.token}
-                onValueChange={(value) =>
-                  setForm((prev) => ({ ...prev, token: value as SUPPORTED_TOKENS }))
-                }
+                onValueChange={(value) => setForm((prev) => ({ ...prev, token: value as IntentToken }))}
               >
                 <SelectTrigger id="intent-token" className="w-full">
                   <SelectValue placeholder="Select token" />
