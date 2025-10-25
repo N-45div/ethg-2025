@@ -79,13 +79,15 @@ export function CreatePayrollIntentDialog({
   const publicClient = usePublicClient();
   const { writeContractAsync, isPending } = useWriteContract();
   const company = useCompanyContracts();
+  // For now, route by token using env-configured addresses.
+  // Company-scoped addresses will be supported when registry exposes per-token vaults.
   const selectedPayroll = useMemo(
-    () => (form.token === 'USDC' ? (company.payroll ?? CONTRACTS.payrollUsdc) : (company.payroll ?? CONTRACTS.payroll)),
-    [company.payroll, form.token]
+    () => (form.token === 'USDC' ? CONTRACTS.payrollUsdc : CONTRACTS.payroll),
+    [form.token]
   );
   const selectedTreasury = useMemo(
-    () => (form.token === 'USDC' ? (company.treasury ?? CONTRACTS.treasuryUsdc) : (company.treasury ?? CONTRACTS.treasury)),
-    [company.treasury, form.token]
+    () => (form.token === 'USDC' ? CONTRACTS.treasuryUsdc : CONTRACTS.treasury),
+    [form.token]
   );
   const { isAutomation, isLoading: rolesLoading, granting, requestGrant, refreshRoles } = usePayrollRoles(selectedPayroll as `0x${string}` | undefined);
   const [grantingVault, setGrantingVault] = useState(false);

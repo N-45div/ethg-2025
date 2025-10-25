@@ -158,7 +158,7 @@ export default function DashboardPage() {
         const json = await res.json();
         const rows = (json?.schedules ?? []) as Array<{ id: string; worker: string; amount: number; releaseAt: number; claimed: boolean; txHash?: string; asset: 'PYUSD' | 'USDC'; }>;
         return rows
-          .map((r) => ({ ...r, releaseAt: new Date(r.releaseAt) }))
+          .map((r) => ({ ...r, releaseAt: new Date((r.releaseAt || 0) * 1000) }))
           .sort((a, b) => a.releaseAt.getTime() - b.releaseAt.getTime());
       },
     });
