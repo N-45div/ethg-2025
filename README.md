@@ -234,7 +234,3 @@ pnpm hardhat ignition deploy # Deploy contracts
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-**Built with ❤️ by the Avail Nexus team**
