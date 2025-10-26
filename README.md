@@ -61,18 +61,18 @@ graph TB
     G --> K
     H --> L
     
-    style A fill:#f0f0f0,stroke:#333,stroke-width:2px
-    style B fill:#f0f0f0,stroke:#333,stroke-width:2px
-    style C fill:#f0f0f0,stroke:#333,stroke-width:2px
-    style D fill:#f0f0f0,stroke:#333,stroke-width:2px
-    style E fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style F fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style G fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style H fill:#e0e0e0,stroke:#333,stroke-width:2px
-    style I fill:#d0d0d0,stroke:#333,stroke-width:2px
-    style J fill:#d0d0d0,stroke:#333,stroke-width:2px
-    style K fill:#d0d0d0,stroke:#333,stroke-width:2px
-    style L fill:#d0d0d0,stroke:#333,stroke-width:2px
+    style A fill:#1a1a1a,stroke:#fff,stroke-width:2px,color:#fff
+    style B fill:#1a1a1a,stroke:#fff,stroke-width:2px,color:#fff
+    style C fill:#1a1a1a,stroke:#fff,stroke-width:2px,color:#fff
+    style D fill:#1a1a1a,stroke:#fff,stroke-width:2px,color:#fff
+    style E fill:#2d2d2d,stroke:#fff,stroke-width:2px,color:#fff
+    style F fill:#2d2d2d,stroke:#fff,stroke-width:2px,color:#fff
+    style G fill:#2d2d2d,stroke:#fff,stroke-width:2px,color:#fff
+    style H fill:#2d2d2d,stroke:#fff,stroke-width:2px,color:#fff
+    style I fill:#404040,stroke:#fff,stroke-width:2px,color:#fff
+    style J fill:#404040,stroke:#fff,stroke-width:2px,color:#fff
+    style K fill:#404040,stroke:#fff,stroke-width:2px,color:#fff
+    style L fill:#404040,stroke:#fff,stroke-width:2px,color:#fff
 ```
 
 ### 📁 Project Structure
