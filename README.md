@@ -61,18 +61,18 @@ graph TB
     G --> K
     H --> L
     
-    style A fill:#e1f5fe
-    style B fill:#e1f5fe
-    style C fill:#e1f5fe
-    style D fill:#e1f5fe
-    style E fill:#f3e5f5
-    style F fill:#f3e5f5
-    style G fill:#f3e5f5
-    style H fill:#f3e5f5
-    style I fill:#e8f5e8
-    style J fill:#e8f5e8
-    style K fill:#e8f5e8
-    style L fill:#e8f5e8
+    style A fill:#f0f0f0,stroke:#333,stroke-width:2px
+    style B fill:#f0f0f0,stroke:#333,stroke-width:2px
+    style C fill:#f0f0f0,stroke:#333,stroke-width:2px
+    style D fill:#f0f0f0,stroke:#333,stroke-width:2px
+    style E fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style F fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style G fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style H fill:#e0e0e0,stroke:#333,stroke-width:2px
+    style I fill:#d0d0d0,stroke:#333,stroke-width:2px
+    style J fill:#d0d0d0,stroke:#333,stroke-width:2px
+    style K fill:#d0d0d0,stroke:#333,stroke-width:2px
+    style L fill:#d0d0d0,stroke:#333,stroke-width:2px
 ```
 
 ### 📁 Project Structure
@@ -230,35 +230,10 @@ pnpm hardhat ignition deploy # Deploy contracts
 - **Event-driven architecture** for real-time updates
 - **Secure wallet integration** with multiple provider support
 
-## 🗺️ Development Roadmap
-
-- [ ] **Real-time execution monitoring** - Wire Avail Nexus actions back to dashboard
-- [ ] **Multi-token support** - Extend beyond PYUSD to other stablecoins  
-- [ ] **Compliance exports** - Region-specific reporting and audit trails
-- [ ] **Multi-sig integration** - Enhanced treasury governance controls
-- [ ] **Mainnet deployment** - Production-ready network configuration
-- [ ] **Mobile optimization** - Native mobile app experience
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 Links & Resources
-
-- **📚 Documentation**: [Avail Project Docs](https://docs.availproject.org)
-- **🐦 Twitter**: [@godlovesu_n](https://x.com/godlovesu_n)  
-- **💻 GitHub**: [N-45div](https://github.com/N-45div)
-- **📧 Contact**: [hello@availproject.org](mailto:hello@availproject.org)
 
 ---
 
